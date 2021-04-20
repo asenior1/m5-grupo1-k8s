@@ -1,0 +1,169 @@
+# NAMESPACE
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grupo1
+spec: {}
+status: {}
+---
+# DEPLOYMENT
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-grupo1
+  namespace: grupo1
+  labels:
+    app: app-grupo1
+spec:
+  # Se crean 2 replicas
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app-grupo1
+  strategy:
+    # Estrategis Rolling Update
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: app-grupo1
+    spec:
+      volumes:
+        # Volumen tipo empty
+        - name: vol-grupo1
+          emptyDir: {}
+        # Volumen para setear secret como archivo
+        - name: vol-secreto
+          secret:
+            secretName: secret-grupo1
+      containers:
+      - image: dbellt/hello-blue-whale:v1
+        name: app-grupo1
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: 100m
+            memory: 200M
+          requests:
+            cpu: 50m
+            memory: 100M
+        volumeMounts:
+          # Se monta volumen tipo empty
+          - mountPath: "/opt/vol"
+            name: vol-grupo1
+          # Se monta volumen de secret
+          - mountPath: "/opt/secreto"
+            name: vol-secreto
+        env:
+        # Variable de Ambiente
+        - name: ENV_GRUPO
+          value: "Grupo 1"
+        # Variable desde ConfigMap
+        - name: ENV_MODULO
+          valueFrom:
+            configMapKeyRef:
+              name: confmap-grupo1
+              key: modulo
+        # Se configura livenessProbe
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          # Espera 2 segundos
+          initialDelaySeconds: 2
+          periodSeconds: 3
+          timeoutSeconds: 3
+        # Se configura readinessProbe
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 2
+          periodSeconds: 2
+          successThreshold: 2
+          failureThreshold: 3
+          timeoutSeconds: 1
+status: {}
+---
+# AUTOESCALADO
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: autoscaler-grupo1
+  namespace: grupo1
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1beta1
+    kind: Deployment
+    name: deploy-grupo1
+  # Minimo 2 - Maximo 4 replicas - Uso CPU 50%
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 50
+---
+# SERVICIO
+apiVersion: v1
+kind: Service
+metadata:
+  name: serv-grupo1
+  namespace: grupo1
+  labels:
+    app: app-grupo1
+spec:
+  # Expuesto con Cluster IP
+  type: ClusterIP
+  ports:
+  - name: 80-80
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: app-grupo1
+status: {}
+---
+# INGRESS
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-grupo1
+  namespace: grupo1
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: minikube-grupo1.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: serv-grupo1
+            port:
+              number: 80
+---
+# CONFIG MAP
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: confmap-grupo1
+  namespace: grupo1
+data:
+  modulo: "Modulo 05"
+---
+# SECRET
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-grupo1
+  namespace: grupo1
+type: Opaque
+# Archivo como secreto
+stringData:
+  config.yaml: |
+    user: dXNlci1ncnVwbzEK
+    pass: cGFzcy1ncnVwbzEK
